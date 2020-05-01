@@ -1,54 +1,88 @@
+
+library(ggplot2)
+
 library(dplyr)
-filename <- "last_project.zip"
+library(lubridate)
+library(reshape2)
 
-# Checking if archieve already exists.
-if (!file.exists(filename)){
-  fileURL <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-  download.file(fileURL, filename, method="curl")
-}  
 
-# Checking if folder exists
-if (!file.exists("UCI HAR Dataset")) { 
-  unzip(filename) 
+## Saving main directory path
+setwd_future = getwd()
+
+## Navigating to project directory
+setwd("Case Studies/Human_Activity_Recognition_Using_Smartphones_Data_Set")
+
+## Saving location of project directory
+setwd_UCI_HAR = getwd()
+
+
+
+
+fileurl = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+
+if (!file.exists('./UCI HAR Dataset')){
+  download.file(fileurl,'./UCI HAR Dataset.zip', mode = 'wb')
+  unzip("UCI HAR Dataset.zip", exdir = getwd())
 }
+unlink("./UCI HAR Dataset.zip")
 
 
 
-features <- read.table("UCI HAR Dataset/features.txt", col.names = c("n","functions"))
-activities <- read.table("UCI HAR Dataset/activity_labels.txt", col.names = c("code", "activity"))
-subject_test <- read.table("UCI HAR Dataset/test/subject_test.txt", col.names = "subject")
-x_test <- read.table("UCI HAR Dataset/test/X_test.txt", col.names = features$functions)
-y_test <- read.table("UCI HAR Dataset/test/y_test.txt", col.names = "code")
-subject_train <- read.table("UCI HAR Dataset/train/subject_train.txt", col.names = "subject")
-x_train <- read.table("UCI HAR Dataset/train/X_train.txt", col.names = features$functions)
-y_train <- read.table("UCI HAR Dataset/train/y_train.txt", col.names = "code")
+
+## Loading features
+features = read.csv('./UCI HAR Dataset/features.txt', header = FALSE, sep = ' ')
+features = as.character(features[,2])
+
+## Training data
+x_train = read.table('./UCI HAR Dataset/train/X_train.txt')
+train_activity = read.csv('./UCI HAR Dataset/train/y_train.txt', header = FALSE, sep = ' ')
+train_subject = read.csv('./UCI HAR Dataset/train/subject_train.txt',header = FALSE, sep = ' ')
+
+train =  data.frame(train_subject,train_activity,x_train)
+names(train) = c(c('subject', 'activity'), features)
+
+## Testing data
+x_test = read.table('./UCI HAR Dataset/test/X_test.txt')
+test_activity = read.csv('./UCI HAR Dataset/test/y_test.txt', header = FALSE, sep = ' ')
+test_subject = read.csv('./UCI HAR Dataset/test/subject_test.txt', header = FALSE, sep = ' ')
+
+test = data.frame(test_subject,test_activity,x_test)
+names(test) = c(c('subject', 'activity'), features)
+
+
+mergedDT = rbind(train,test)
+
+
+reqDatafields = grep("mean|std",features)
+reqData = mergedDT[,reqDatafields]
 
 
 
-X <- rbind(x_train, x_test)
-Y <- rbind(y_train, y_test)
-Subject <- rbind(subject_train, subject_test)
-Merged_Data <- cbind(Subject, Y, X)
+## loading activity labels 
+activity_labels = read.table('./UCI HAR Dataset/activity_labels.txt', header = FALSE)
+activity_labels = as.character(activity_labels[,2])
+reqData$activity = activity_labels[reqData$activity]
 
-TidyData <- Merged_Data %>% select(subject, code, contains("mean"), contains("std"))
+ 
 
-TidyData$code <- activities[TidyData$code, 2]
+## Creating new column names 
+og_names = names(reqData)
+updt_names = gsub("[(][)]", "", og_names)
+updt_names = gsub("^t", "TimeDomain_", updt_names)
+updt_names = gsub("^f", "FrequencyDomain_", updt_names)
+updt_names = gsub("Acc", "Accelerometer", updt_names)
+updt_names = gsub("Gyro", "Gyroscope", updt_names)
+updt_names = gsub("Mag", "Magnitude", updt_names)
+updt_names = gsub("-mean-", "_Mean_", updt_names)
+updt_names = gsub("-std-", "_StandardDeviation_", updt_names)
+updt_names = gsub("-", "_", updt_names)
+names(reqData) = updt_names
 
-names(TidyData)[2] = "activity"
-names(TidyData)<-gsub("Acc", "Accelerometer", names(TidyData))
-names(TidyData)<-gsub("Gyro", "Gyroscope", names(TidyData))
-names(TidyData)<-gsub("BodyBody", "Body", names(TidyData))
-names(TidyData)<-gsub("Mag", "Magnitude", names(TidyData))
-names(TidyData)<-gsub("^t", "Time", names(TidyData))
-names(TidyData)<-gsub("^f", "Frequency", names(TidyData))
-names(TidyData)<-gsub("tBody", "TimeBody", names(TidyData))
-names(TidyData)<-gsub("-mean()", "Mean", names(TidyData), ignore.case = TRUE)
-names(TidyData)<-gsub("-std()", "STD", names(TidyData), ignore.case = TRUE)
-names(TidyData)<-gsub("-freq()", "Frequency", names(TidyData), ignore.case = TRUE)
-names(TidyData)<-gsub("angle", "Angle", names(TidyData))
-names(TidyData)<-gsub("gravity", "Gravity", names(TidyData))
 
-myfinal <- TidyData %>%
-  group_by(subject, activity) %>%
-  summarise_all(funs(mean))
-write.table(FinalData, "FinalData.txt", row.name=FALSE)
+
+baseData = melt(reqData,(id.vars=c("subject","activity")))
+secondDataSet = dcast(baseData, subject + activity ~ variable, mean)
+write.table(secondDataSet, "tidy_data.txt",row.names = F)
+
+## Deleting unecessary folder
+unlink("./UCI HAR Dataset",recursive = T)
